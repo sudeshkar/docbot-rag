@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+api/.env
+api/storage/*
+!api/storage/.gitkeep
+api/evals/results/
+
+# Node
+web/node_modules/
+web/.next/
+web/.env.local
+
+.DS_Store

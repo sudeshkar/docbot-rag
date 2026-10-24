@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --surface: #fcfcfb;
+  --surface-2: #f3f2ef;
+  --surface-3: #e9e8e4;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-3: #7a7974;
+  --line: #e2e1dc;
+  --accent: #2a78d6;
+  --accent-ink: #ffffff;
+  --danger: #c43a39;
+  --good: #1a7f4b;
+  --warn: #a86800;
+  /* chart series: reference palette slots 1-2 (validated adjacent pair) */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --surface: #141413;
+    --surface-2: #1d1d1b;
+    --surface-3: #2a2a27;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --ink-3: #8f8e86;
+    --line: #2f2f2c;
+    --accent: #3987e5;
+    --accent-ink: #ffffff;
+    --danger: #e66767;
+    --good: #3cb371;
+    --warn: #e0a030;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #141413;
+  --surface-2: #1d1d1b;
+  --surface-3: #2a2a27;
+  --ink: #f0efec;
+  --ink-2: #c3c2b7;
+  --ink-3: #8f8e86;
+  --line: #2f2f2c;
+  --accent: #3987e5;
+  --accent-ink: #ffffff;
+  --danger: #e66767;
+  --good: #3cb371;
+  --warn: #e0a030;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+}
+
+@theme inline {
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-danger: var(--danger);
+  --color-good: var(--good);
+  --color-warn: var(--warn);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+.prose-chat p { margin: 0.4em 0; }
+.prose-chat ul, .prose-chat ol { margin: 0.4em 0; padding-left: 1.25em; }
+.prose-chat ul { list-style: disc; }
+.prose-chat ol { list-style: decimal; }
+.prose-chat code { font-family: var(--font-mono); font-size: 0.9em; background: var(--surface-3); padding: 0 0.25em; border-radius: 4px; }
+.prose-chat strong { font-weight: 600; }

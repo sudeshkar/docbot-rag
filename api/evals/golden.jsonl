@@ -1,0 +1,16 @@
+{"question": "How long does it take to get my money back?", "answer_contains": "5 to 7 business days"}
+{"question": "Can I get a refund after renewing?", "answer_contains": "not available for renewals"}
+{"question": "How much is the Team plan?", "answer_contains": "$8 per user per month"}
+{"question": "Do I save money paying yearly?", "answer_contains": "saves 20%"}
+{"question": "Where can I download old invoices?", "answer_contains": "Settings > Billing > Invoices"}
+{"question": "Can I add my VAT number to an invoice I already received?", "answer_contains": "existing invoices cannot be changed"}
+{"question": "How long is the password reset link valid?", "answer_contains": "valid for 1 hour"}
+{"question": "Can I get 2FA codes by text message?", "answer_contains": "SMS codes are not supported"}
+{"question": "Which identity providers work with SSO?", "answer_contains": "Okta, Microsoft Entra ID, and Google Workspace"}
+{"question": "What is the biggest file I can upload on a paid plan?", "answer_contains": "50 GB on paid plans"}
+{"question": "Can I put a password on a shared link?", "answer_contains": "protected with a password"}
+{"question": "How long do deleted files stay in the trash on a paid plan?", "answer_contains": "180 days on paid plans"}
+{"question": "How many old versions of a file are kept?", "answer_contains": "last 100 versions"}
+{"question": "What does error E-507 mean?", "answer_contains": "E-507 means your storage quota is full"}
+{"question": "The desktop app stopped syncing, what should I do?", "answer_contains": "Rebuild index"}
+{"question": "When is live chat support available?", "answer_contains": "9am to 6pm Eastern Time"}

@@ -1,0 +1,31 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: docbot
+      POSTGRES_PASSWORD: docbot
+      POSTGRES_DB: docbot
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docbot"]
+      interval: 5s
+      retries: 10
+
+  chroma:
+    image: chromadb/chroma:1.0.15
+    ports:
+      - "8001:8000"
+    volumes:
+      - chromadata:/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+
+volumes:
+  pgdata:
+  chromadata:
