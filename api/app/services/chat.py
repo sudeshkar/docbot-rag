@@ -2,21 +2,23 @@
 Emits Server-Sent Events so the UI can render tokens as they arrive."""
 
 import json
+import logging
 import time
 from collections.abc import Iterator
 from typing import Protocol
 from uuid import UUID
 
-import anthropic
 from sqlalchemy.orm import Session
 
 from app.db.models import Bot, QueryLog
 from app.domain.types import RetrievalResult
 from app.rag.generation.answer import AnswerGenerator
-from app.rag.generation.llm import LLMResult
+from app.rag.generation.llm import LLMError, LLMResult
 from app.repositories.bots import month_start
 from app.repositories.conversations import ConversationRepository
 from app.repositories.query_logs import QueryLogRepository
+
+log = logging.getLogger(__name__)
 
 SNIPPET_CHARS = 400
 
@@ -77,7 +79,8 @@ class ChatService:
         try:
             for delta in self.generator.stream(question, result.chunks, history, bot.instructions, llm):
                 yield sse("token", delta)
-        except anthropic.APIError:
+        except LLMError as e:
+            log.warning("LLM call failed: %s", e)
             yield sse("error", {"message": "The assistant is temporarily unavailable. Please try again."})
             return
 

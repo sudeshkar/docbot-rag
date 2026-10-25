@@ -15,7 +15,7 @@ from app.repositories.chunks import ChunkRepository
 from app.services.analytics import AnalyticsService
 from app.services.chat import ChatService
 from app.services.ingestion import IngestionService
-from tests.fakes import FakeEmbedder, FakeLLM, FakeRetrieval, FakeStore, parse_sse
+from tests.fakes import FailingLLM, FakeEmbedder, FakeLLM, FakeRetrieval, FakeStore, parse_sse
 
 pytestmark = pytest.mark.integration
 
@@ -73,6 +73,12 @@ def test_chat_continues_conversation_with_history(db, bot):
     _, messages = llm.calls[-1]
     assert [m["role"] for m in messages] == ["user", "assistant", "user"]
     assert messages[0]["content"] == "first question"
+
+
+def test_chat_reports_llm_failure_as_error_event(db, bot):
+    events = parse_sse("".join(chat_service(db, llm=FailingLLM()).chat_turn(bot, "q", None, "widget")))
+    assert events[-1][0] == "error" and "temporarily unavailable" in events[-1][1]["message"]
+    assert "done" not in dict(events)
 
 
 def test_chat_enforces_monthly_quota(db, bot):

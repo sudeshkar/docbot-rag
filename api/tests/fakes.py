@@ -1,7 +1,7 @@
 """Test doubles shared across service and API tests."""
 
 from app.domain.types import RetrievalResult, RetrievedChunk
-from app.rag.generation.llm import LLMResult
+from app.rag.generation.llm import LLMError, LLMResult
 
 
 class FakeLLM:
@@ -20,6 +20,12 @@ class FakeLLM:
 
     def complete(self, prompt, max_tokens=1024):
         return "5"
+
+
+class FailingLLM:
+    def stream(self, system, messages, result: LLMResult):
+        raise LLMError("provider down")
+        yield  # pragma: no cover - makes this a generator
 
 
 class FakeRetrieval:

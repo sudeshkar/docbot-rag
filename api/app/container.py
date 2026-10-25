@@ -24,7 +24,8 @@ from app.rag.chunking.factory import create_chunker
 from app.rag.embeddings.base import Embedder
 from app.rag.embeddings.factory import create_embedder
 from app.rag.generation.answer import AnswerGenerator
-from app.rag.generation.llm import ClaudeLLM
+from app.rag.generation.factory import create_llm
+from app.rag.generation.llm import LLM
 from app.rag.generation.prompt import PromptBuilder
 from app.rag.retrieval.fusion import ReciprocalRankFusion
 from app.rag.retrieval.hybrid import HybridRetriever
@@ -54,9 +55,17 @@ def get_vector_store() -> VectorStore:
 
 
 @lru_cache
-def get_llm() -> ClaudeLLM:
+def get_llm() -> LLM:
     s = get_settings()
-    return ClaudeLLM(s.anthropic_api_key, s.llm_model, s.llm_effort, s.llm_fallbacks)
+    return create_llm(
+        s.llm_provider,
+        anthropic_api_key=s.anthropic_api_key,
+        llm_model=s.llm_model,
+        llm_effort=s.llm_effort,
+        llm_fallbacks=s.llm_fallbacks,
+        groq_api_key=s.groq_api_key,
+        groq_model=s.groq_model,
+    )
 
 
 @lru_cache
@@ -108,7 +117,7 @@ def get_chat_service(
     db: Session = Depends(get_db),
     embedder: Embedder = Depends(get_embedder),
     store: VectorStore = Depends(get_vector_store),
-    llm: ClaudeLLM = Depends(get_llm),
+    llm: LLM = Depends(get_llm),
 ) -> ChatService:
     s = get_settings()
     return ChatService(

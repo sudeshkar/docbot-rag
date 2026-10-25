@@ -2,7 +2,7 @@
 
 Upload your docs or crawl your site, and get an embeddable AI support widget that answers with **citations**. DocBot also tracks the questions your docs **couldn't answer**.
 
-**Stack:** Next.js · FastAPI · PostgreSQL (app data + full-text search) · **Chroma** (vectors) · Redis + arq (background jobs) · Claude (answers) · Voyage (embeddings)
+**Stack:** Next.js · FastAPI · PostgreSQL (app data + full-text search) · **Chroma** (vectors) · Redis + arq (background jobs) · Claude or Groq (answers) · Voyage (embeddings)
 
 ## Features
 
@@ -50,7 +50,7 @@ npm install
 npm run dev                 # http://localhost:3000
 ```
 
-No API keys yet? Set `EMBEDDING_PROVIDER=hash` to ingest and search offline. Chat still needs `ANTHROPIC_API_KEY`.
+No API keys yet? Set `EMBEDDING_PROVIDER=hash` to ingest and search offline. For chat, use either `ANTHROPIC_API_KEY`, or `LLM_PROVIDER=groq` with a `GROQ_API_KEY` (default model `openai/gpt-oss-120b`, override with `GROQ_MODEL`).
 
 Try it with `sample_docs/acme-help-center.md`. Embed the widget on any page with:
 

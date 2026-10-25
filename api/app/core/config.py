@@ -17,11 +17,14 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60 * 24 * 7
     cors_origins: str = "http://localhost:3000"
 
+    llm_provider: str = "anthropic"  # anthropic | groq
     anthropic_api_key: str | None = None
     llm_model: str = "claude-opus-5-5"
     llm_effort: str = "low"
     # Server-side refusal fallback (beta): reroutes a declined request to another model in the same call.
     llm_fallbacks: bool = True
+    groq_api_key: str | None = None
+    groq_model: str = "openai/gpt-oss-120b"
 
     embedding_provider: str = "voyage"  # voyage | hash
     voyage_api_key: str | None = None
