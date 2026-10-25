@@ -36,7 +36,7 @@ docker compose up -d
 cd api
 python -m venv .venv && .venv/Scripts/activate   # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env        # add ANTHROPIC_API_KEY and VOYAGE_API_KEY, and set a long random JWT_SECRET
+cp .env.example .env        # set an LLM key (see below) and a long random JWT_SECRET
 alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 
@@ -50,9 +50,39 @@ npm install
 npm run dev                 # http://localhost:3000
 ```
 
-No API keys yet? Set `EMBEDDING_PROVIDER=hash` to ingest and search offline. For chat, use either `ANTHROPIC_API_KEY`, or `LLM_PROVIDER=groq` with a `GROQ_API_KEY` (default model `openai/gpt-oss-120b`, override with `GROQ_MODEL`).
+Generate a `JWT_SECRET` with `python -c "import secrets; print(secrets.token_urlsafe(48))"` and paste the output into `.env`.
 
-Try it with `sample_docs/acme-help-center.md`. Embed the widget on any page with:
+### Choosing an LLM provider
+
+Chat answers come from either Claude (the default) or Groq. Embeddings are a separate setting: `EMBEDDING_PROVIDER=voyage` needs a `VOYAGE_API_KEY`, and `EMBEDDING_PROVIDER=hash` works offline with no key (lower retrieval quality).
+
+**Claude:** set `ANTHROPIC_API_KEY` in `api/.env`. That's all; `LLM_PROVIDER=anthropic` is the default.
+
+**Groq** (has a free tier, so the whole app can run on one free key):
+
+1. Create a key at [console.groq.com/keys](https://console.groq.com/keys).
+2. In `api/.env`, set:
+
+   ```env
+   LLM_PROVIDER=groq
+   GROQ_API_KEY=gsk_...
+   GROQ_MODEL=openai/gpt-oss-120b
+   EMBEDDING_PROVIDER=hash      # or voyage, with VOYAGE_API_KEY
+   ```
+
+   `ANTHROPIC_API_KEY` and `VOYAGE_API_KEY` can stay empty.
+3. Restart uvicorn so it reloads `.env`. The worker doesn't call the LLM, so it doesn't need a restart.
+4. Ask a question in the Playground.
+
+Groq retires models from time to time. If chat fails and the API log shows `model_not_found`, list the models your key can use and put one of them in `GROQ_MODEL`:
+
+```bash
+curl -s https://api.groq.com/openai/v1/models -H "Authorization: Bearer $GROQ_API_KEY"
+```
+
+When chat shows "The assistant is temporarily unavailable", the uvicorn terminal logs the real cause (`LLM call failed: ...`). On Groq, the usual ones are `401` (wrong key), `404` (retired model) and `429` (free-tier rate limit; wait a minute). Open-weight models follow the citation rules less strictly than Claude, so expect the occasional answer without `[n]` citations.
+
+Try it with `sample_docs/acme-help-center.md`, or the three Brewly files in `sample_docs/brewly/` (Markdown and plain text) to test answers that span several documents. To try the widget on a separate site, put your widget key in `sample_docs/widget-test.html`, add `http://localhost:5500` under the bot's allowed websites, and serve it with `python -m http.server 5500` from `sample_docs/`. Embed the widget on any page with:
 
 ```html
 <script src="http://localhost:3000/widget.js" data-key="pk_..." async></script>
