@@ -70,7 +70,8 @@ def get_llm() -> LLM:
 
 @lru_cache
 def get_rate_limiter() -> RateLimiter:
-    return RedisRateLimiter(redis.Redis.from_url(get_settings().redis_url))
+    s = get_settings()
+    return RedisRateLimiter(redis.Redis.from_url(s.redis_url), secret=s.jwt_secret)
 
 
 def get_url_guard() -> Callable[[str], None]:

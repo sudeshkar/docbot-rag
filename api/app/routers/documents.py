@@ -14,7 +14,7 @@ from app.ingest.validation import MAX_UPLOAD_BYTES, UploadRejected, validate_upl
 from app.rag.vectorstores.base import VectorStore, namespace_for
 from app.repositories.documents import DocumentRepository
 from app.routers.deps import owned_bot
-from app.schemas import DocumentOut, UrlIngest
+from app.schemas import DocumentOut, UrlIngest, clean_text
 
 router = APIRouter(prefix="/bots/{bot_id}/documents", tags=["documents"])
 READ_CHUNK = 1024 * 1024
@@ -23,7 +23,8 @@ READ_CHUNK = 1024 * 1024
 def _safe_display_name(filename: str) -> str:
     # Only ever used as a label. Files are stored under a random UUID name, so a name like
     # "../../etc/passwd" can't escape the storage directory.
-    return PurePosixPath(filename.replace("\\", "/")).name[:200] or "upload"
+    # Invisible/bidi characters are dropped so "invoice<RLO>fdp.exe" can't pose as "invoiceexe.pdf".
+    return clean_text(PurePosixPath(filename.replace("\\", "/")).name)[:200] or "upload"
 
 
 @router.get("", response_model=list[DocumentOut])

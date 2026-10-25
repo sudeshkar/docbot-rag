@@ -1,10 +1,56 @@
+import re
+import unicodedata
 from datetime import datetime
+from typing import Annotated
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, HttpUrl, field_validator
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, HttpUrl, field_validator
 
+from app.core.security import BCRYPT_MAX_BYTES
 from app.rag.chunking.factory import CHUNKERS
+
+
+# Bidi embeddings/overrides/isolates (text-direction spoofing), zero-width space and BOM (filter evasion).
+# ZWNJ/ZWJ (U+200C/D) are kept: emoji sequences and several scripts need them.
+_INVISIBLE = dict.fromkeys(
+    [*range(0x202A, 0x202F), *range(0x2066, 0x206A), 0x200B, 0xFEFF]
+)
+# A tag opener as browsers parse it: "<" directly followed by a letter, "/", "!" or "?".
+# "a < b" and "<3" stay valid.
+_HTML_TAG = re.compile(r"<[A-Za-z/!?]")
+
+
+def clean_text(value: str, multiline: bool = False) -> str:
+    """NFC-normalize, drop control and invisible characters, and trim. O(len(value)).
+
+    Single-line fields turn newlines and tabs into spaces; multi-line fields keep them.
+    """
+    value = unicodedata.normalize("NFC", value.replace("\r\n", "\n")).translate(_INVISIBLE)
+    out = []
+    for ch in value:
+        if ch in "\n\t":
+            out.append(ch if multiline else " ")
+        elif unicodedata.category(ch) != "Cc":
+            out.append(ch)
+    return "".join(out).strip()
+
+
+def _cleaner(multiline: bool):
+    return lambda v: clean_text(v, multiline) if isinstance(v, str) else v
+
+
+def reject_html(value: str) -> str:
+    # React escapes on output, so this is defense in depth: plain-text fields never need markup,
+    # and rejecting it keeps stored payloads away from any future non-escaping consumer.
+    if _HTML_TAG.search(value):
+        raise ValueError("HTML tags are not allowed")
+    return value
+
+
+# Cleaning runs before the length checks, so "   " fails min_length.
+SingleLineText = Annotated[str, BeforeValidator(_cleaner(multiline=False)), AfterValidator(reject_html)]
+MultiLineText = Annotated[str, BeforeValidator(_cleaner(multiline=True))]
 
 
 def normalize_origin(value: str) -> str:
@@ -20,15 +66,18 @@ class Credentials(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
 
+    @field_validator("password")
+    @classmethod
+    def fits_bcrypt(cls, v: str) -> str:
+        # Measured in UTF-8 bytes, not characters: accented letters and emoji take 2-4 bytes each.
+        if len(v.encode()) > BCRYPT_MAX_BYTES:
+            raise ValueError(f"Password must be at most {BCRYPT_MAX_BYTES} bytes")
+        return v
+
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(max_length=128)
-
-
-class TokenOut(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
 
 
 class UserOut(BaseModel):
@@ -38,13 +87,13 @@ class UserOut(BaseModel):
 
 
 class BotCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=120)
+    name: SingleLineText = Field(min_length=1, max_length=120)
 
 
 class BotUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=120)
-    instructions: str | None = Field(default=None, max_length=4000)
-    welcome_message: str | None = Field(default=None, max_length=300)
+    name: SingleLineText | None = Field(default=None, min_length=1, max_length=120)
+    instructions: MultiLineText | None = Field(default=None, max_length=4000)
+    welcome_message: SingleLineText | None = Field(default=None, max_length=300)
     allowed_origins: list[str] | None = Field(default=None, max_length=50)
     monthly_quota: int | None = Field(default=None, ge=0, le=1_000_000)
     chunking_strategy: str | None = None
@@ -99,13 +148,16 @@ class UrlIngest(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    question: str = Field(min_length=1, max_length=2000)
+    # Not reject_html: questions are never rendered as HTML, and asking about "<script> tags" is legitimate.
+    question: MultiLineText = Field(min_length=1, max_length=2000)
     conversation_id: UUID | None = None
 
 
 class PublicBotOut(BaseModel):
     name: str
     welcome_message: str
+    # Public by nature (they're the sites showing the widget); the web app turns them into frame-ancestors.
+    allowed_origins: list[str]
 
 
 class ChunkingStrategyOut(BaseModel):

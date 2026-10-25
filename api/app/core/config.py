@@ -1,19 +1,25 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 API_ROOT = Path(__file__).resolve().parents[2]
+
+DEFAULT_JWT_SECRET = "dev-secret-change-me"
+MIN_JWT_SECRET_LENGTH = 32
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=API_ROOT / ".env", extra="ignore")
 
+    app_env: str = "development"  # development | production
+
     database_url: str = "postgresql+psycopg://docbot:docbot@localhost:5433/docbot"
     redis_url: str = "redis://localhost:6380/0"
     chroma_host: str = "localhost"
     chroma_port: int = 8001
-    jwt_secret: str = "dev-secret-change-me"
+    jwt_secret: str = DEFAULT_JWT_SECRET
     jwt_expire_minutes: int = 60 * 24 * 7
     cors_origins: str = "http://localhost:3000"
 
@@ -42,6 +48,17 @@ class Settings(BaseSettings):
     widget_rate_limit_per_min: int = 20
     login_rate_limit_per_min: int = 10
     crawl_max_pages: int = 25
+
+    @model_validator(mode="after")
+    def require_strong_secret_in_production(self) -> "Settings":
+        # Anyone who knows or guesses the secret can sign login tokens for any account.
+        if self.app_env == "production" and (
+            self.jwt_secret == DEFAULT_JWT_SECRET or len(self.jwt_secret) < MIN_JWT_SECRET_LENGTH
+        ):
+            raise ValueError(
+                f"JWT_SECRET must be a random string of at least {MIN_JWT_SECRET_LENGTH} characters in production"
+            )
+        return self
 
     @property
     def cors_origin_list(self) -> list[str]:

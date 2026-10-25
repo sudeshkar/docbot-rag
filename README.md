@@ -88,6 +88,51 @@ Try it with `sample_docs/acme-help-center.md`, or the three Brewly files in `sam
 <script src="http://localhost:3000/widget.js" data-key="pk_..." async></script>
 ```
 
+## Deploying for free
+
+Everything runs on one free server, behind one domain: Caddy sends `https://<domain>/api/*` to FastAPI and everything else to Next.js. Keeping the dashboard and API on the same origin is what lets the login session be a first-party, `SameSite=Strict`, httpOnly cookie. Split across two domains (e.g. Vercel + a separate API host), browsers that block third-party cookies would break login. The API and the worker also have to share a disk, since the worker reads the files the API saves.
+
+| Part | Where |
+|---|---|
+| Web app, API, worker, Postgres, Chroma, Redis, HTTPS (Caddy) | Oracle Cloud Always Free VM (`VM.Standard.A1.Flex`, Ubuntu) |
+| Domain | DuckDNS, e.g. `docbot.duckdns.org` |
+| Chat / embeddings | Groq free tier / `EMBEDDING_PROVIDER=hash` (or Voyage) |
+
+**On the server:**
+
+1. Install Docker, and open ports 80 and 443 in the Oracle security list and the VM firewall.
+2. Point your DuckDNS name at the server's public IP.
+3. Clone the repo and create the two settings files. Generate every secret with `python3 -c "import secrets; print(secrets.token_hex(32))"`.
+
+   ```bash
+   cp .env.prod.example .env          # APP_DOMAIN, POSTGRES_PASSWORD, REDIS_PASSWORD
+   cp api/.env.example api/.env       # LLM keys and JWT_SECRET (CORS is set from APP_DOMAIN)
+   chmod 600 .env api/.env            # secrets readable by your user only
+   ```
+
+4. Start everything. Migrations run automatically, and Caddy gets the HTTPS certificate on first start.
+
+   ```bash
+   docker compose -f docker-compose.prod.yml up -d --build
+   curl https://<APP_DOMAIN>/api/health
+   ```
+
+5. Open `https://<APP_DOMAIN>`, sign up, and add your sites under each bot's **Embed > Allowed websites**.
+
+To update later: `git pull && docker compose -f docker-compose.prod.yml up -d --build`.
+
+**What the production stack enforces:**
+
+- Only Caddy is reachable from the internet (ports 80/443). Postgres, Chroma, Redis, the API and the web app sit on the internal Docker network.
+- **Sessions:** the login token lives only in an `httpOnly; Secure; SameSite=Strict` cookie, so page scripts (or an XSS) can't read it. Cookie-authenticated writes also need an `X-DocBot-CSRF` header, which cross-site forms can't send. API clients can still use `Authorization: Bearer`.
+- **Widget embedding:** `/embed/<key>` is served with `Content-Security-Policy: frame-ancestors <the bot's allowed websites>`, so browsers refuse to show the widget on any other site. The iframe reads its embedding page from `location.ancestorOrigins` where available instead of trusting `?origin=`. A bot with no allowlist can be embedded anywhere.
+- **Input:** plain-text fields reject HTML tags and are stripped of control and bidi characters. Chat answers render without raw HTML, links must be http(s)/mailto, and images are dropped.
+- The API refuses to start with a missing, default or short (< 32 characters) `JWT_SECRET`.
+- Passwords are bcrypt-hashed. Rate-limit keys are stored in Redis as HMAC-SHA256 digests, never as raw client IPs.
+- Redis requires a password. Postgres uses a generated password instead of the dev default.
+- Containers run as non-root users, and secrets are never baked into images (`.dockerignore`).
+- HTTPS with HSTS, a 25 MB request cap at the proxy, and server-software headers removed.
+
 ## Tests
 
 The backend was built test-first.

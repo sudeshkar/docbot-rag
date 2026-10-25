@@ -6,7 +6,6 @@ import { useEffect, useState, type FormEvent } from "react";
 import Logo from "@/components/Logo";
 import { Button, Card, ErrorText, Input } from "@/components/ui";
 import { api } from "@/lib/api";
-import { clearToken } from "@/lib/auth";
 import type { Bot } from "@/lib/types";
 import { useRequireAuth } from "@/lib/useAuth";
 
@@ -42,7 +41,7 @@ export default function Dashboard() {
         <Logo href="/dashboard" />
         <div className="flex items-center gap-3 text-sm text-ink-2">
           <span className="hidden sm:inline">{email}</span>
-          <Button variant="ghost" onClick={() => { clearToken(); router.push("/login"); }}>Log out</Button>
+          <Button variant="ghost" onClick={() => api.logout().finally(() => router.push("/login"))}>Log out</Button>
         </div>
       </header>
 

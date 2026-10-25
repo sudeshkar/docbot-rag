@@ -85,6 +85,17 @@ def test_answer_generator_streams_and_collects_citations():
     assert (stats.input_tokens, stats.output_tokens) == (10, 5)
 
 
+def test_answer_generator_normalizes_fullwidth_citation_brackets():
+    # Some open models (e.g. gpt-oss) cite as 【1】, often split across stream deltas.
+    llm = FakeLLM(["Costs $26 ", "【", "1", "】", "."])
+    gen = AnswerGenerator(llm, PromptBuilder())
+    stats = LLMResult()
+    out = "".join(gen.stream("q", [chunk(1)], [], "", stats))
+    assert out == "Costs $26 [1]."
+    assert stats.text == "Costs $26 [1]."
+    assert stats.cited_indices == [1]
+
+
 def test_answer_generator_handles_refusal():
     gen = AnswerGenerator(FakeLLM([], stop_reason="refusal"), PromptBuilder())
     stats = LLMResult()

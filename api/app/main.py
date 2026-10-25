@@ -4,6 +4,7 @@ from sqlalchemy import text
 
 from app.container import get_vector_store
 from app.core.config import get_settings
+from app.core.security import CSRF_HEADER
 from app.db.session import SessionLocal
 from app.routers import auth, bots, documents, public
 
@@ -41,9 +42,11 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
-        allow_credentials=False,  # bearer tokens, not cookies: no CSRF surface
+        # Cookies cross the dev ports (web :3000 -> api :8000). Only the explicit origins above may
+        # send them, and cookie-authenticated writes also need the CSRF header (see core/security.py).
+        allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
-        allow_headers=["Authorization", "Content-Type", "X-Embed-Origin"],
+        allow_headers=["Authorization", "Content-Type", "X-Embed-Origin", CSRF_HEADER],
     )
     for r in (auth.router, bots.router, documents.router, public.router):
         app.include_router(r)

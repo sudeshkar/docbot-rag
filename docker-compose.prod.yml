@@ -1,0 +1,127 @@
+# Production stack for a single server: docker compose -f docker-compose.prod.yml up -d --build
+# Only Caddy publishes ports (80/443). Postgres, Chroma, Redis, the API and the web app are
+# reachable solely on the internal network. The site and API share one domain (see Caddyfile).
+name: docbot-prod
+
+x-app: &app
+  build: ./api
+  image: docbot-api
+  env_file: ./api/.env
+  environment:
+    # Refuses to start with a missing or weak JWT_SECRET.
+    APP_ENV: production
+    # Point at the containers below; these override the localhost values in api/.env.
+    DATABASE_URL: postgresql+psycopg://docbot:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/docbot
+    REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379/0
+    CHROMA_HOST: chroma
+    CHROMA_PORT: "8000"
+    # The dashboard and widget are served from the same origin.
+    CORS_ORIGINS: https://${APP_DOMAIN:?set APP_DOMAIN in .env}
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: docbot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: docbot
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docbot"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+  chroma:
+    image: chromadb/chroma:1.0.15
+    volumes:
+      - chromadata:/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # Password as defense in depth, even though Redis is never published.
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}"]
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+
+  # One-shot: applies migrations, then exits. api and worker wait for it to succeed.
+  migrate:
+    <<: *app
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    volumes:
+      - uploads:/app/storage
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      chroma:
+        condition: service_started
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    <<: *app
+    command: ["arq", "app.worker.WorkerSettings"]
+    # Same volume as the api: uploads saved by the api are read here.
+    volumes:
+      - uploads:/app/storage
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      chroma:
+        condition: service_started
+      redis:
+        condition: service_started
+
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_API_URL: /api
+    image: docbot-web
+    environment:
+      # Server-side calls (the embed frame-ancestors lookup) go straight to the API container.
+      INTERNAL_API_URL: http://api:8000
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      - api
+      - web
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  chromadata:
+  redisdata:
+  uploads:
+  caddydata:
+  caddyconfig:

@@ -1,7 +1,9 @@
-import { clearToken, getToken } from "./auth";
 import type { Analytics, Bot, ChunkingStrategy, Doc } from "./types";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+/** Must match CSRF_HEADER in api/app/core/security.py. Cross-site forms can't set custom headers. */
+export const CSRF_HEADER = "X-DocBot-CSRF";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -10,15 +12,15 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = getToken();
   const headers = new Headers(init.headers);
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+  headers.set(CSRF_HEADER, "1");
   if (init.body && !(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
 
-  const res = await fetch(`${API_URL}${path}`, { ...init, headers });
-  if (res.status === 401 && token) {
-    clearToken();
-    if (typeof window !== "undefined") window.location.href = "/login";
+  // The session is an httpOnly cookie: the browser attaches it, and no script can read it.
+  const res = await fetch(`${API_URL}${path}`, { ...init, headers, credentials: "include" });
+  // An expired session sends you to login; a wrong password on the login form must not.
+  if (res.status === 401 && !path.startsWith("/auth/") && typeof window !== "undefined") {
+    window.location.href = "/login";
   }
   if (!res.ok) {
     let message = res.statusText;
@@ -35,12 +37,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 const json = (body: unknown) => JSON.stringify(body);
 
+type User = { id: string; email: string };
+
 export const api = {
   signup: (email: string, password: string) =>
-    request<{ access_token: string }>("/auth/signup", { method: "POST", body: json({ email, password }) }),
+    request<User>("/auth/signup", { method: "POST", body: json({ email, password }) }),
   login: (email: string, password: string) =>
-    request<{ access_token: string }>("/auth/login", { method: "POST", body: json({ email, password }) }),
-  me: () => request<{ id: string; email: string }>("/auth/me"),
+    request<User>("/auth/login", { method: "POST", body: json({ email, password }) }),
+  logout: () => request<void>("/auth/logout", { method: "POST" }),
+  me: () => request<User>("/auth/me"),
 
   strategies: () => request<ChunkingStrategy[]>("/meta/chunking-strategies"),
   listBots: () => request<Bot[]>("/bots"),
@@ -78,7 +83,14 @@ export function chatStream(
   signal?: AbortSignal,
 ): Promise<Response> {
   const headers: Record<string, string> = { "Content-Type": "application/json", ...extraHeaders };
-  const token = getToken();
-  if (token && !path.startsWith("/public/")) headers.Authorization = `Bearer ${token}`;
-  return fetch(`${API_URL}${path}`, { method: "POST", headers, body: JSON.stringify(body), signal });
+  // The public widget runs on customers' sites and must never carry the dashboard session.
+  const isPublic = path.startsWith("/public/");
+  if (!isPublic) headers[CSRF_HEADER] = "1";
+  return fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    signal,
+    credentials: isPublic ? "omit" : "include",
+  });
 }

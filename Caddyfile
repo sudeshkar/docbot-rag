@@ -1,0 +1,28 @@
+# One domain for everything, so the session cookie is first-party and SameSite=Strict:
+#   https://APP_DOMAIN/api/*  -> FastAPI (prefix stripped)
+#   https://APP_DOMAIN/*      -> Next.js dashboard and widget
+# Caddy gets and renews the Let's Encrypt certificate automatically.
+{$APP_DOMAIN} {
+	header {
+		# HTTPS only, for a year, once a browser has seen this domain.
+		Strict-Transport-Security "max-age=31536000"
+		# Don't advertise server software.
+		-Server
+	}
+	# Reject oversized requests here (uploads are capped at 20 MB; this leaves room for multipart overhead).
+	request_body {
+		max_size 25MB
+	}
+	# No `encode` here: compressing would buffer the SSE chat stream.
+	handle_path /api/* {
+		reverse_proxy api:8000 {
+			header_down -Server
+		}
+	}
+	handle {
+		reverse_proxy web:3000 {
+			header_down -Server
+			header_down -X-Powered-By
+		}
+	}
+}

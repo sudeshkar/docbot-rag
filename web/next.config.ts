@@ -7,6 +7,9 @@ const common = [
 ];
 
 const nextConfig: NextConfig = {
+  // Self-contained server bundle for the production Docker image.
+  output: "standalone",
+  poweredByHeader: false,
   async headers() {
     return [
       {
@@ -16,9 +19,9 @@ const nextConfig: NextConfig = {
           { key: "Content-Security-Policy", value: "frame-ancestors 'none'" }],
       },
       {
-        // The chat iframe is meant to be embedded on customers' sites.
+        // The chat iframe's frame-ancestors is per bot, set in src/middleware.ts.
         source: "/embed/:path*",
-        headers: [...common, { key: "Content-Security-Policy", value: "frame-ancestors *" }],
+        headers: common,
       },
       {
         source: "/widget.js",

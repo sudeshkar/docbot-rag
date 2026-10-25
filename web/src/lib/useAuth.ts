@@ -2,15 +2,26 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getToken } from "./auth";
+import { api } from "./api";
+import { removeLegacyToken } from "./legacyToken";
 
-/** Client-side guard: redirect to /login when there's no token. Returns true once it's safe to render. */
+/**
+ * Client-side guard. The session cookie is httpOnly, so the page can't inspect it; ask the API instead.
+ * Returns true once the session is confirmed; a 401 redirects to /login.
+ */
 export function useRequireAuth(): boolean {
   const router = useRouter();
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    if (!getToken()) router.replace("/login");
-    else setReady(true);
+    removeLegacyToken();
+    let active = true;
+    api
+      .me()
+      .then(() => active && setReady(true))
+      .catch(() => active && router.replace("/login"));
+    return () => {
+      active = false;
+    };
   }, [router]);
   return ready;
 }

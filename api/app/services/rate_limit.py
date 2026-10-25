@@ -1,5 +1,7 @@
 """Fixed-window rate limiting: O(1) time and memory per key per window."""
 
+import hashlib
+import hmac
 import threading
 import time
 from collections.abc import Callable
@@ -14,14 +16,20 @@ class RateLimiter(Protocol):
 
 
 class RedisRateLimiter:
-    """INCR + EXPIRE in one pipelined round trip; shared across API workers."""
+    """INCR + EXPIRE in one pipelined round trip; shared across API workers.
 
-    def __init__(self, client: redis.Redis):
+    Keys hold client IPs, so they're stored as keyed HMAC-SHA256 digests: Redis never sees a raw IP,
+    and without the secret the 2^32 IPv4 space can't be brute-forced back out of the digests.
+    """
+
+    def __init__(self, client: redis.Redis, secret: str):
         self.client = client
+        self._secret = secret.encode()
 
     def hit(self, key: str, limit: int, window_seconds: int) -> bool:
         window = int(time.time() // window_seconds)
-        redis_key = f"rl:{key}:{window}"
+        digest = hmac.new(self._secret, key.encode(), hashlib.sha256).hexdigest()
+        redis_key = f"rl:{digest}:{window}"
         pipe = self.client.pipeline()
         pipe.incr(redis_key)
         pipe.expire(redis_key, window_seconds + 1)

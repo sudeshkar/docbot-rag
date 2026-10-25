@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import container
+from app.core.security import CSRF_HEADER, SESSION_COOKIE
 from app.db.session import get_db
 from app.ingest.url_safety import UnsafeUrl
 from app.main import create_app
@@ -56,7 +57,10 @@ def signup(client, email=None):
     email = email or f"{uuid4().hex}@example.com"
     r = client.post("/auth/signup", json={"email": email, "password": "correct-horse-1"})
     assert r.status_code == 201, r.text
-    return {"Authorization": f"Bearer {r.json()['access_token']}"}
+    token = r.cookies[SESSION_COOKIE]
+    # Tests juggle several users, so drop the shared cookie jar and authenticate explicitly.
+    client.cookies.clear()
+    return {"Authorization": f"Bearer {token}"}
 
 
 def create_bot(client, headers, name="Support"):
@@ -70,10 +74,46 @@ def create_bot(client, headers, name="Support"):
 def test_signup_login_me(env):
     client, _, _ = env
     client.post("/auth/signup", json={"email": "Dev@Example.com", "password": "correct-horse-1"})
+    client.cookies.clear()
     r = client.post("/auth/login", json={"email": "dev@example.com", "password": "correct-horse-1"})
-    assert r.status_code == 200
-    me = client.get("/auth/me", headers={"Authorization": f"Bearer {r.json()['access_token']}"})
-    assert me.json()["email"] == "dev@example.com"
+    assert r.status_code == 200 and r.json()["email"] == "dev@example.com"
+    # the session cookie in the jar authenticates the next request
+    assert client.get("/auth/me").json()["email"] == "dev@example.com"
+
+
+def test_session_cookie_is_httponly_strict_and_token_never_in_body(env):
+    client, _, _ = env
+    r = client.post("/auth/signup", json={"email": "c@example.com", "password": "correct-horse-1"})
+    assert "access_token" not in r.json()  # page scripts never see the token
+    cookie = r.headers["set-cookie"].lower()
+    assert f"{SESSION_COOKIE}=" in cookie
+    assert "httponly" in cookie and "samesite=strict" in cookie and "path=/" in cookie
+
+
+def test_cookie_auth_requires_csrf_header_on_state_changes(env):
+    client, _, _ = env
+    client.post("/auth/signup", json={"email": "csrf@example.com", "password": "correct-horse-1"})
+    # a forged cross-site form post carries the cookie but can't add custom headers
+    assert client.post("/bots", json={"name": "Forged"}).status_code == 403
+    ok = client.post("/bots", json={"name": "Mine"}, headers={CSRF_HEADER: "1"})
+    assert ok.status_code == 201
+    # reads don't change state, so they don't need it
+    assert client.get("/bots").status_code == 200
+
+
+def test_bearer_auth_needs_no_csrf_header(env):
+    client, _, _ = env
+    h = signup(client)  # bearer only; browsers never attach this automatically
+    assert client.post("/bots", json={"name": "API client"}, headers=h).status_code == 201
+
+
+def test_logout_clears_the_session_cookie(env):
+    client, _, _ = env
+    client.post("/auth/signup", json={"email": "bye@example.com", "password": "correct-horse-1"})
+    r = client.post("/auth/logout")
+    assert r.status_code == 204
+    assert f'{SESSION_COOKIE}=""' in r.headers["set-cookie"] or "max-age=0" in r.headers["set-cookie"].lower()
+    assert client.get("/auth/me").status_code == 401
 
 
 def test_duplicate_signup_and_bad_login(env):
@@ -204,7 +244,7 @@ def test_public_widget_flow(env):
     key = bot["public_key"]
 
     info = client.get(f"/public/bots/{key}")
-    assert info.json() == {"name": "Acme Help", "welcome_message": bot["welcome_message"]}
+    assert info.json() == {"name": "Acme Help", "welcome_message": bot["welcome_message"], "allowed_origins": []}
     assert client.get("/public/bots/pk_nope").status_code == 404
 
     r = client.post(f"/public/bots/{key}/chat", json={"question": "Refunds?"},
@@ -221,6 +261,16 @@ def test_public_widget_enforces_allowed_origins(env):
     assert client.post(url, json={"question": "q"}, headers={"X-Embed-Origin": "https://evil.com"}).status_code == 403
     assert client.post(url, json={"question": "q"}).status_code == 403
     assert client.post(url, json={"question": "q"}, headers={"X-Embed-Origin": "https://acme.com"}).status_code == 200
+
+
+def test_public_bot_exposes_allowed_origins_for_frame_ancestors(env):
+    client, _, _ = env
+    h = signup(client)
+    bot = create_bot(client, h)
+    client.patch(f"/bots/{bot['id']}", headers=h, json={"allowed_origins": ["https://acme.com/"]})
+    info = client.get(f"/public/bots/{bot['public_key']}").json()
+    assert info["allowed_origins"] == ["https://acme.com"]
+    assert set(info) == {"name", "welcome_message", "allowed_origins"}  # nothing private leaks
 
 
 def test_public_widget_is_rate_limited(env):
@@ -249,3 +299,17 @@ def test_oversized_question_rejected(env):
     bot = create_bot(client, h)
     r = client.post(f"/bots/{bot['id']}/chat", headers=h, json={"question": "x" * 5000})
     assert r.status_code == 422
+
+
+# --- input validation over HTTP ----------------------------------------------------------
+
+def test_script_payloads_in_bot_fields_are_rejected_and_nothing_is_stored(env):
+    client, _, _ = env
+    h = signup(client)
+    r = client.post("/bots", json={"name": "<script>alert(document.cookie)</script>"}, headers=h)
+    assert r.status_code in (400, 422)
+    bot = create_bot(client, h)
+    r = client.patch(f"/bots/{bot['id']}", json={"welcome_message": "<img src=x onerror=alert(1)>"}, headers=h)
+    assert r.status_code in (400, 422)
+    assert [b["name"] for b in client.get("/bots", headers=h).json()] == ["Support"]
+    assert client.get(f"/bots/{bot['id']}", headers=h).json()["welcome_message"] != "<img src=x onerror=alert(1)>"

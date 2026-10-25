@@ -7,9 +7,17 @@ import { API_URL } from "@/lib/api";
 
 type PublicBot = { name: string; welcome_message: string };
 
+function embeddingOrigin(): string | null {
+  if (typeof window === "undefined" || window.parent === window) return null;
+  return window.location.ancestorOrigins?.[0] ?? null;
+}
+
 function EmbedChat() {
   const { key } = useParams<{ key: string }>();
-  const origin = useSearchParams().get("origin") ?? "";
+  const claimed = useSearchParams().get("origin") ?? "";
+  // Prefer the browser's own record of who framed us; ?origin= is only a fallback for browsers
+  // without ancestorOrigins (Firefox), where the frame-ancestors CSP still stops other sites.
+  const origin = embeddingOrigin() ?? claimed;
   const [bot, setBot] = useState<PublicBot | null>(null);
   const [error, setError] = useState("");
 

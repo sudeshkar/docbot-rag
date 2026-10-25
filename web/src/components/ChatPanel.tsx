@@ -4,8 +4,10 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import { chatStream } from "@/lib/api";
 import { linkCitations } from "@/lib/citations";
+import { markdownComponents, sourceLabel } from "@/lib/markdown";
 import { readSSE } from "@/lib/sse";
 import type { Source } from "@/lib/types";
+import { safeHref } from "@/lib/url";
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -158,20 +160,7 @@ function AssistantBody({ message, showDiagnostics }: { message: ChatMessage; sho
     <div className="space-y-2">
       {message.content && (
         <div className="prose-chat">
-          <ReactMarkdown
-            components={{
-              a: ({ href, children }) => {
-                const n = href?.startsWith("#cite-") ? Number(href.slice(6)) : NaN;
-                const src = byIndex.get(n);
-                if (src) return <CitationChip source={src} />;
-                return (
-                  <a href={href} target="_blank" rel="noopener noreferrer nofollow" className="text-accent underline">
-                    {children}
-                  </a>
-                );
-              },
-            }}
-          >
+          <ReactMarkdown components={markdownComponents(byIndex)}>
             {linkCitations(message.content, [...byIndex.keys()])}
           </ReactMarkdown>
         </div>
@@ -194,36 +183,12 @@ function AssistantBody({ message, showDiagnostics }: { message: ChatMessage; sho
   );
 }
 
-function sourceLabel(s: Source) {
-  return [s.title, s.heading?.split(" > ").pop(), s.page ? `p. ${s.page}` : null].filter(Boolean).join(" · ");
-}
-
-function CitationChip({ source }: { source: Source }) {
-  return (
-    <span className="group relative inline-block align-baseline">
-      <button
-        type="button"
-        aria-label={`Source ${source.index}: ${sourceLabel(source)}`}
-        className="mx-0.5 rounded bg-accent/15 px-1 text-[0.7rem] font-semibold text-accent"
-      >
-        {source.index}
-      </button>
-      <span
-        role="tooltip"
-        className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-72 -translate-x-1/2 rounded-lg border border-line bg-surface p-3 text-left text-xs text-ink-2 shadow-lg group-focus-within:block group-hover:block"
-      >
-        <span className="mb-1 block font-semibold text-ink">{sourceLabel(source)}</span>
-        <span className="line-clamp-6 block">{source.snippet}</span>
-      </span>
-    </span>
-  );
-}
-
 function SourceLink({ source }: { source: Source }) {
   const label = `${source.index}. ${sourceLabel(source)}`;
   const cls = "max-w-full truncate rounded-md border border-line bg-surface px-2 py-0.5 text-xs text-ink-2";
-  return source.url ? (
-    <a href={source.url} target="_blank" rel="noopener noreferrer nofollow" className={`${cls} hover:text-ink`}>
+  const href = safeHref(source.url);
+  return href ? (
+    <a href={href} target="_blank" rel="noopener noreferrer nofollow" className={`${cls} hover:text-ink`}>
       {label}
     </a>
   ) : (

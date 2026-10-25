@@ -6,7 +6,6 @@ import { useState, type FormEvent } from "react";
 import Logo from "@/components/Logo";
 import { Button, ErrorText, Field, Input } from "@/components/ui";
 import { api } from "@/lib/api";
-import { setToken } from "@/lib/auth";
 
 export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
   const router = useRouter();
@@ -21,8 +20,8 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
     setError("");
     setBusy(true);
     try {
-      const { access_token } = isSignup ? await api.signup(email, password) : await api.login(email, password);
-      setToken(access_token);
+      // The API sets the httpOnly session cookie; there's no token for the page to handle.
+      await (isSignup ? api.signup(email, password) : api.login(email, password));
       router.push("/dashboard");
     } catch (err) {
       setError((err as Error).message);
